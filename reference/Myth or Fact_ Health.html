@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Myth or Fact: Health</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;600;700;800&family=Playfair+Display:wght@900&family=Anton&display=block">
+<style>
+:root{color-scheme:dark light;--bg:#0b0b0d;--panel:#141417;--ink:#f2f0ea;--dim:#9a99a2;--line:#26262c;--accent:#ffd60a;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--bg:#f4f5f7;--panel:#fff;--ink:#14161a;--dim:#5a6270;--line:#dde2e8}}
+:root[data-theme="dark"]{--bg:#0b0b0d;--panel:#141417;--ink:#f2f0ea;--dim:#9a99a2;--line:#26262c}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 15px/1.5 Inter,system-ui,sans-serif;padding:20px max(16px,env(safe-area-inset-left,0px)) 28px max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:900px;margin:0 auto;display:grid;gap:14px}
+h1{font:400 clamp(24px,4vw,36px)/1.1 "Archivo Black",Impact,sans-serif;margin:0}
+.meta,.note{color:var(--dim);margin:0;font-size:13px}
+.stage{aspect-ratio:720/1280;width:min(100%,calc(74vh*720/1280));margin-inline:auto;background:#000;border-radius:10px;overflow:hidden;border:1px solid var(--line)}
+.stage canvas{width:100%;height:100%;display:block}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.bar button,.bar label{font:600 14px Inter,sans-serif;color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:7px;padding:8px 12px;cursor:pointer}
+.bar button:focus-visible,.bar label:focus-within,#scrub:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.bar button[aria-pressed="true"]{background:var(--accent);color:#0b0b0d;border-color:var(--accent)}
+#play{min-width:82px;background:var(--ink);color:var(--bg)}
+#scrub{flex:1 1 220px;min-width:0;accent-color:var(--accent)}
+#time{font-variant-numeric:tabular-nums;color:var(--dim);min-width:92px;text-align:right}
+#vofile{position:absolute;width:1px;height:1px;opacity:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Myth or Fact: Health</h1>
+<p class="meta">27 s, 720×1280, Hinglish, code se draw aur synthesized sound</p>
+<div class="stage"><canvas id="stage" width="720" height="1280" aria-label="Myth or Fact health animation"></canvas></div>
+<div class="bar">
+<button id="play" type="button">Play</button>
+<input id="scrub" type="range" min="0" max="27" step="0.01" value="0" aria-label="Scrub timeline">
+<span id="time">0.00 / 27.00</span>
+<button id="sound" type="button" aria-pressed="true">Sound on</button>
+<button id="loop" type="button" aria-pressed="true">Loop</button>
+<label for="vofile">Load voiceover<input id="vofile" type="file" accept="audio/*"></label>
+</div>
+<p class="note" id="vonote">Voiceover load karne par effects halke mix mein chalte hain.</p>
+</div>
+<script>
+const W=720,H=1280,TAU=Math.PI*2;
+// ---------- core (CM subset) ----------
+const clamp=(v,a=0,b=1)=>v<a?a:v>b?b:v,lerp=(a,b,u)=>a+(b-a)*u,span=(t,a,b)=>clamp((t-a)/(b-a));
+const rotl=(x,k)=>(x<<k)|(x>>>(32-k));
+const hash=(s)=>{s=String(s);let h=0x9e3779b1;for(let i=0;i<s.length;i++){h=Math.imul(h^s.charCodeAt(i),0x85ebca6b);h^=h>>>13;}return h>>>0;};
+const rng=(seed)=>{const s=typeof seed==='number'?seed>>>0:hash(seed);let a=(s^0xa5a5a5a5)>>>0,b=(Math.imul(s,0x27d4eb2d)>>>0)||1,c=(0x165667b1^s)>>>0,d=(rotl(s,7)>>>0)||7;
+ const r=()=>{const res=Math.imul(rotl(Math.imul(b,5),7),9)>>>0;const t=b<<9;c^=a;d^=b;b^=c;a^=d;c^=t;d=rotl(d,11);return res/4294967296;};for(let i=0;i<8;i++)r();return r;};
+const ez={outExpo:(u)=>(u>=1?1:1-Math.pow(2,-10*u)),back:(u,s=1.7)=>(u<=0?0:u>=1?1:1+(s+1)*Math.pow(u-1,3)+s*Math.pow(u-1,2))};
+const rr=(c,x,y,w,h,r)=>{c.beginPath();c.roundRect(x,y,w,h,r);};
+const textW=(c,s,font,ls=0)=>{c.save();c.font=font;c.letterSpacing=ls+'px';const w=c.measureText(s).width;c.restore();return w;};
+function txt(c,s,x,y,o={}){c.save();c.font=o.f||'700 40px Inter';c.textAlign=o.a||'left';c.textBaseline=o.b||'alphabetic';c.letterSpacing=(o.ls||0)+'px';
+ c.translate(x,y);if(o.s!=null)c.scale(o.s,o.s);if(o.alpha!=null)c.globalAlpha*=o.alpha;c.fillStyle=o.c||'#fff';c.fillText(s,0,0);c.restore();}
+const pop=(t,t0,d=0.45,s=1.9)=>ez.back(span(t,t0,t0+d),s),inn=(t,t0,d=0.5)=>ez.outExpo(span(t,t0,t0+d));
+function shake(c,t,hits,amp=14,d=0.35){let dx=0,dy=0;for(const h of hits){const u=(t-h)/d;if(u>0&&u<1){const k=(1-u)*amp;dx+=Math.sin(u*61)*k;dy+=Math.cos(u*47)*k;}}c.translate(dx,dy);}
+// ---------- style: Myth or Fact (health) ----------
+const C={bg:'#eef1f4',ink:'#111111',red:'#e03131',green:'#2f9e44',yellow:'#f5b700',mute:'#5a6270'};
+const HEAD=(px)=>`400 ${px}px "Archivo Black", Impact, sans-serif`,BODY=(px,w=800)=>`${w} ${px}px Inter, system-ui, sans-serif`,ANT=(px)=>`400 ${px}px Anton, Impact, sans-serif`;
+const R=[
+ [['Knuckles todne se','arthritis ho jaati','hai.'],0,['Studies mein knuckle cracking','aur arthritis ka link nahi mila']],
+ [['Baadal wale din','bhi sunscreen','zaroori hai.'],1,['Baadalon se bhi UV kirnein','80% tak pahunch sakti hain']],
+ [['Thandi hawa lagne','se sardi-zukaam','hota hai.'],0,['Zukaam virus se hota hai,','thandi hawa se nahi']],
+ [['Kam neend se','zukaam ka risk','badhta hai.'],1,['6 ghante se kam sone walon','ko zukaam ka risk 4 guna tha']]];
+const RECAP=[['Knuckles aur arthritis',0],['Baadal mein sunscreen',1],['Thandi hawa aur zukaam',0],['Kam neend aur zukaam',1]];
+const TL={D:27,title:0.2,rounds:[0.8,6.6,12.4,18.2],guess:1.0,stamp:3.3,proof:3.9,out:5.4,score:24.0};
+const SL={};
+function stampLayer(word,col){if(SL[word])return SL[word];const L=document.createElement('canvas');L.width=340;L.height=180;const x=L.getContext('2d');x.translate(170,90);x.strokeStyle=col;x.lineWidth=9;rr(x,-150,-70,300,140,16);x.stroke();x.lineWidth=3;rr(x,-134,-54,268,108,10);x.stroke();
+ txt(x,word,0,36,{f:ANT(104),c:col,a:'center',ls:4});x.globalCompositeOperation='destination-out';const r=rng(word);for(let i=0;i<220;i++){x.fillStyle=`rgba(0,0,0,${0.4+r()*0.6})`;x.beginPath();x.arc((r()-0.5)*300,(r()-0.5)*140,r()*3.4,0,TAU);x.fill();}return SL[word]=L;}
+function stamp(c,x,y,word,col,p){if(p<=0)return;c.save();c.translate(x,y);c.rotate(-0.2);const s=lerp(2.2,1,Math.min(1,p));c.scale(s,s);c.globalAlpha*=Math.min(1,p*2);c.drawImage(stampLayer(word,col),-170,-90);c.restore();}
+function round(c,lt,i){
+ const [lines,fact,proof]=R[i],p=pop(lt,0,0.45,2);if(p<=0)return;
+ c.save();c.translate(360,470);c.scale(p,p);c.shadowColor='rgba(0,0,0,0.12)';c.shadowBlur=36;c.shadowOffsetY=14;rr(c,-320,-200,640,400,30);c.fillStyle='#fff';c.fill();c.shadowColor='transparent';
+ txt(c,'“',-290,-60,{f:'900 160px "Playfair Display", Georgia',c:'#e5e8ec'});txt(c,'#'+(i+1),290,-150,{f:BODY(24,700),c:'#9aa3ad',a:'right'});
+ lines.forEach((l,k)=>txt(c,l,-270,-50+k*64,{f:BODY(52,800),c:C.ink}));c.restore();
+ const g=span(lt,TL.guess,TL.stamp-0.1);
+ if(g>0&&lt<TL.stamp){txt(c,'MYTH YA FACT? GUESS KARO',360,760,{f:BODY(26,800),c:C.mute,a:'center',ls:2});rr(c,160,784,400,14,7);c.fillStyle='#dde2e8';c.fill();rr(c,160,784,400*g,14,7);c.fillStyle=C.yellow;c.fill();}
+ c.save();shake(c,lt,[TL.stamp+0.15],14,0.3);stamp(c,460,640,fact?'FACT':'MYTH',fact?C.green:C.red,ez.back(span(lt,TL.stamp,TL.stamp+0.25),2.2));c.restore();
+ const q=inn(lt,TL.proof,0.4);
+ if(q>0){c.save();c.globalAlpha*=q;c.fillStyle=fact?C.green:C.red;c.beginPath();c.arc(70,930,26,0,TAU);c.fill();c.strokeStyle='#fff';c.lineWidth=6;c.lineCap='round';c.beginPath();
+  if(fact){c.moveTo(58,930);c.lineTo(67,940);c.lineTo(84,920);}else{c.moveTo(60,920);c.lineTo(80,940);c.moveTo(80,920);c.lineTo(60,940);}
+  c.stroke();proof.forEach((l,k)=>txt(c,l,112,942+k*46,{f:BODY(32,700),c:'#222'}));c.restore();}
+}
+function score(c,t){
+ RECAP.forEach(([s,f],k)=>{const u=inn(t,TL.score+k*0.12,0.4);if(u<=0)return;const y=260+k*160;c.save();c.globalAlpha=u;c.translate(0,(1-u)*70);c.save();c.shadowColor='rgba(0,0,0,.12)';c.shadowBlur=30;c.shadowOffsetY=10;rr(c,40,y,640,120,26);c.fillStyle='#fff';c.fill();c.restore();
+  txt(c,s,72,y+74,{f:BODY(32,800),c:C.ink});rr(c,520,y+26,132,68,14);c.fillStyle=f?C.green:C.red;c.fill();txt(c,f?'FACT':'MYTH',586,y+80,{f:ANT(44),c:'#fff',a:'center',ls:2});c.restore();});
+ const q=pop(t,TL.score+0.6,0.4,1.8);if(q<=0)return;
+ c.save();c.translate(360,1075);c.scale(q,q);c.translate(-360,-1075);rr(c,40,1000,640,150,28);c.fillStyle=C.ink;c.fill();
+ const F=BODY(46,800),a='Kitne sahi ',b='bataye?',x0=360-textW(c,a+b,F)/2;txt(c,a,x0,1096,{f:F,c:'#fff'});txt(c,b,x0+textW(c,a,F),1096,{f:F,c:C.yellow});c.restore();
+}
+function explainer(c,t){
+ c.setTransform(1,0,0,1,0,0);c.globalAlpha=1;c.filter='none';c.fillStyle=C.bg;c.fillRect(0,0,W,H);
+ const p=inn(t,TL.title,0.4);txt(c,'MYTH OR FACT',44,140,{f:HEAD(60),c:C.ink,alpha:p});txt(c,'?',44+textW(c,'MYTH OR FACT',HEAD(60))+6,140,{f:HEAD(60),c:C.yellow,alpha:p});
+ TL.rounds.forEach((t0,i)=>{const lt=t-t0;if(lt<0||lt>TL.out+0.35)return;c.save();c.globalAlpha=1-span(lt,TL.out,TL.out+0.3);round(c,lt,i);c.restore();});
+ const cur=TL.rounds.filter((x)=>t>=x).length-1;
+ if(cur>=0&&t<TL.score){txt(c,'SAWAAL '+(cur+1)+' / 4',360,1130,{f:BODY(24,800),c:C.mute,a:'center',ls:3});
+  for(let k=0;k<4;k++){c.fillStyle=k===cur?C.yellow:k<cur?C.ink:'#dde2e8';c.beginPath();c.arc(360+(k-1.5)*44,1172,13,0,TAU);c.fill();}}
+ if(t>=TL.score)score(c,t);
+}
+// ---------- SFX: synthesized sound kit (Web Audio, no files) ----------
+const SFX=(()=>{
+ const SEMI={C:-9,D:-7,E:-5,F:-4,G:-2,A:0,B:2};
+ const hz=(n)=>{if(typeof n==='number')return n;const m=/^([A-G])(#|b)?(-?\d)$/.exec(n);return 440*Math.pow(2,(SEMI[m[1]]+(m[2]==='#'?1:m[2]==='b'?-1:0)+(+m[3]-4)*12)/12);};
+ function kit(ac,o={}){
+  const VO=!!o.voiceover,SR=ac.sampleRate,T0=o.from||0,base=ac.currentTime+(o.lead||0);
+  const at=(t)=>(Math.round((base+(t-T0))*SR)+0.3)/SR,skip=(t,d)=>at(t)+d<ac.currentTime||(t<T0-0.005&&d<1.2);
+  const comp=ac.createDynamicsCompressor();comp.threshold.value=-14;comp.knee.value=6;comp.ratio.value=4;comp.attack.value=0.003;comp.release.value=0.15;
+  const master=ac.createGain();master.gain.value=0.85;comp.connect(master);master.connect(o.dest||ac.destination);
+  const mk=(g)=>{const n=ac.createGain();n.gain.value=g;n.connect(comp);return n;};
+  const bus={fx:mk(VO?0.78:0.95),music:mk(VO?0.3:0.62)};
+  const nb=ac.createBuffer(1,2*SR,SR),nd=nb.getChannelData(0),nr=rng('nzwhite');for(let i=0;i<nd.length;i++)nd[i]=nr()*2-1;
+  const ramp=(p,v,t)=>{if(!Array.isArray(v)){p.setValueAtTime(v,t);return;}p.setValueAtTime(v[0][1],t+v[0][0]);for(let i=1;i<v.length;i++)p.exponentialRampToValueAtTime(Math.max(1e-3,v[i][1]),t+v[i][0]);};
+  const env=(g,t,peak,dur,a=0.004,hold=0)=>{a=Math.min(a,dur*0.9);hold=Math.min(hold,dur-a);g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(peak,t+a);if(hold>0)g.gain.setValueAtTime(peak,t+a+hold);g.gain.exponentialRampToValueAtTime(1e-4,t+dur);g.gain.setValueAtTime(0,t+dur+0.002);};
+  const lvl=(p)=>(p.gain==null?0.3:p.gain)*(VO&&p.soft?0.55:1);
+  const route=(node,p)=>{const pan=ac.createStereoPanner();pan.pan.value=clamp(p.pan||0,-1,1);node.connect(pan);pan.connect(bus[p.bus||'fx']);};
+  const filt=(p,t)=>{if(!p.filter)return null;const f=ac.createBiquadFilter();f.type=p.filter;f.Q.value=p.q==null?0.9:p.q;ramp(f.frequency,p.ff==null?1200:p.ff,t);return f;};
+  function voice(time,p){const dur=p.dur||0.2;if(skip(time,dur))return;const t=at(time),osc=ac.createOscillator();osc.type=p.type||'sine';
+   ramp(osc.frequency,Array.isArray(p.f)?p.f.map(([d,v])=>[d,hz(v)]):hz(p.f||440),t);const g=ac.createGain();env(g,t,lvl(p),dur,p.a,p.hold);
+   const f=filt(p,t);if(f){osc.connect(f);f.connect(g);}else osc.connect(g);route(g,p);osc.start(t);osc.stop(t+dur+0.03);}
+  function hiss(time,p){const dur=p.dur||0.2;if(skip(time,dur))return;const t=at(time),src=ac.createBufferSource();src.buffer=nb;src.loop=true;
+   const g=ac.createGain();env(g,t,lvl(p),dur,p.a,p.hold);const f=filt(p,t);if(f){src.connect(f);f.connect(g);}else src.connect(g);route(g,p);src.start(t,rng('off'+time)()*1.5);src.stop(t+dur+0.03);}
+  const S={
+   slam:(t,g)=>{voice(t,{f:[[0,150],[0.12,52]],dur:0.2,gain:0.42*g});hiss(t,{dur:0.07,filter:'lowpass',ff:2600,gain:0.22*g});},
+   pop:(t,g,o)=>{const f=o.f||760;voice(t,{f:[[0,f*1.7],[0.05,f]],dur:0.08,gain:0.22*g,soft:o.soft});hiss(t,{dur:0.01,filter:'highpass',ff:4500,gain:0.08*g,soft:o.soft});},
+   tick:(t,g,o)=>hiss(t,{dur:0.016,filter:'bandpass',ff:o.f||3800,q:3,gain:0.32*g,soft:o.soft}),
+   paper:(t,g)=>hiss(t,{dur:0.28,filter:'bandpass',ff:[[0,700],[0.28,3200]],q:0.8,gain:0.12*g,a:0.11,soft:true}),
+   stamp:(t,g)=>{voice(t,{f:[[0,160],[0.18,48]],dur:0.28,gain:0.6*g});hiss(t,{dur:0.06,filter:'bandpass',ff:1300,q:1.1,gain:0.4*g});hiss(t+0.004,{dur:0.014,filter:'highpass',ff:4200,gain:0.25*g});},
+   buzz:(t,g)=>voice(t,{type:'square',f:130,dur:0.45,gain:0.06*g,filter:'lowpass',ff:900}),
+   ding:(t,g)=>{voice(t,{f:'E6',dur:0.5,gain:0.08*g,a:0.003});voice(t+0.08,{f:'G#6',dur:0.6,gain:0.07*g,a:0.003});},
+   whoosh:(t,g)=>hiss(t,{dur:0.35,filter:'bandpass',ff:[[0,260],[0.19,2200],[0.35,520]],q:0.75,gain:0.5*g,a:0.19,pan:0.3}),
+   chord:(t,g,o)=>(o.notes||[]).forEach((n,i)=>voice(t+i*0.05,{f:n,dur:1.6,gain:0.05*g,a:0.01,pan:(i-1.5)*0.25}))};
+  function play(name,t,o={}){S[name](t,o.gain==null?1:o.gain,o);}
+  function pad(t0,t1,bpm=100,g=1){const bar=60/bpm*4,ch=[['D4','F#4','A4'],['B3','D4','F#4'],['G3','B3','D4'],['A3','C#4','E4']];let i=0;
+   for(let tb=t0;tb<t1-0.1;tb+=bar,i++){const c=ch[i%4],len=Math.min(bar,t1-tb);
+    c.forEach((n,j)=>voice(tb,{type:'triangle',f:n,dur:len+0.4,gain:0.026*g,a:0.5,hold:Math.max(0,len-0.9),filter:'lowpass',ff:1300,pan:(j-1)*0.3,bus:'music'}));
+    voice(tb,{f:hz(c[0])/2,dur:len+0.2,gain:0.05*g,a:0.3,hold:Math.max(0,len-0.6),bus:'music'});
+    for(let b=0;b<8;b++){const ts=tb+b*60/bpm/2;if(ts>=t1-0.05)break;hiss(ts,{dur:b%2?0.03:0.045,filter:'highpass',ff:8000,gain:(b%2?0.014:0.022)*g,bus:'music'});}}}
+  return {play,pad,voice,hiss,hz};
+ }
+ function live(score,from,opts={}){const ac=new (window.AudioContext||window.webkitAudioContext)();score(kit(ac,Object.assign({},opts,{from:from||0,lead:0.04})));return()=>{try{ac.close();}catch(e){}};}
+ async function render(score,dur,sr=48000,opts={}){const len=Math.ceil(dur*sr),ac=new OfflineAudioContext(2,len,sr);score(kit(ac,Object.assign({},opts,{from:0})));
+  const buf=await ac.startRendering(),L=buf.getChannelData(0),Rr=buf.getChannelData(1),inter=new Float32Array(len*2);let peak=0;
+  for(let i=0;i<len;i++){inter[2*i]=L[i];inter[2*i+1]=Rr[i];peak=Math.max(peak,Math.abs(L[i]),Math.abs(Rr[i]));}return {inter,peak,sr,frames:len};}
+ return {kit,live,render,hz};
+})();
+// Sound score: same TL times as the picture
+function scoreSound(k){
+ const G=2;k.pad(0,TL.D,100,0.7);k.play('slam',TL.title,{gain:0.4*G});
+ R.forEach(([,fact],i)=>{const t0=TL.rounds[i];k.play('pop',t0+0.05,{f:560,gain:0.55*G});k.play('paper',t0,{gain:0.7*G});
+  for(let x=t0+TL.guess;x<t0+TL.stamp-0.1;x+=0.25)k.play('tick',x,{f:3200,gain:0.25*G,soft:true});
+  k.play('stamp',t0+TL.stamp+0.12,{gain:G});if(fact)k.play('ding',t0+TL.stamp+0.25,{gain:1.2*G});else k.play('buzz',t0+TL.stamp+0.25,{gain:G});
+  k.play('pop',t0+TL.proof,{f:800,gain:0.35*G,soft:true});k.play('whoosh',t0+TL.out,{gain:0.25*G});});
+ RECAP.forEach((_,j)=>k.play('pop',TL.score+j*0.12,{f:620+j*70,gain:0.4*G,soft:true}));
+ k.play('chord',TL.score+0.4,{gain:G,notes:['D4','F#4','A4','D5']});
+}
+// ---------- player ----------
+const cvs=document.getElementById('stage'),ctx=cvs.getContext('2d'),DURATION=TL.D;
+window.seek=(t)=>explainer(ctx,clamp(t,0,DURATION));window.DURATION=DURATION;window.scoreSound=scoreSound;window.SFX=SFX;
+const ui={play:document.getElementById('play'),scrub:document.getElementById('scrub'),time:document.getElementById('time'),sound:document.getElementById('sound'),loop:document.getElementById('loop'),vo:document.getElementById('vofile'),note:document.getElementById('vonote')};
+let T=0,playing=false,last=0,soundOn=true,loopOn=true,stopSound=null,voAudio=null;
+const fmt=(t)=>t.toFixed(2)+' / '+DURATION.toFixed(2);
+function draw(){window.seek(T);ui.scrub.value=T;ui.time.textContent=fmt(T);}
+function stopAudio(){if(stopSound){stopSound();stopSound=null;}if(voAudio)voAudio.pause();}
+function startAudio(){stopAudio();if(!playing)return;if(soundOn)stopSound=SFX.live(scoreSound,T,{voiceover:!!voAudio});if(voAudio){try{voAudio.currentTime=T;voAudio.play().catch(()=>{});}catch(e){}}}
+function setPlaying(p){playing=p;ui.play.textContent=p?'Pause':'Play';last=performance.now();if(p)startAudio();else stopAudio();}
+function tick(now){if(playing){T+=(now-last)/1000;last=now;if(T>=DURATION){if(loopOn){T=0;startAudio();}else{T=DURATION;setPlaying(false);}}draw();}requestAnimationFrame(tick);}
+ui.play.addEventListener('click',()=>{if(!playing&&T>=DURATION)T=0;setPlaying(!playing);});
+ui.scrub.addEventListener('input',()=>{T=parseFloat(ui.scrub.value);draw();if(playing)startAudio();});
+ui.sound.addEventListener('click',()=>{soundOn=!soundOn;ui.sound.setAttribute('aria-pressed',soundOn);ui.sound.textContent=soundOn?'Sound on':'Sound off';if(playing)startAudio();});
+ui.loop.addEventListener('click',()=>{loopOn=!loopOn;ui.loop.setAttribute('aria-pressed',loopOn);});
+ui.vo.addEventListener('change',()=>{const f=ui.vo.files&&ui.vo.files[0];if(!f)return;if(voAudio){voAudio.pause();URL.revokeObjectURL(voAudio.src);}
+ voAudio=new Audio(URL.createObjectURL(f));ui.note.textContent='Voiceover loaded: '+f.name+'. Effects halke mix mein.';if(playing)startAudio();});
+(async()=>{
+ try{await Promise.all(['400 60px "Archivo Black"','800 40px Inter','700 30px Inter','400 60px Anton','900 160px "Playfair Display"'].map((f)=>document.fonts.load(f,'AaZz09“')));await document.fonts.ready;}catch(e){}
+ window.__posterT=5.4;T=5.4;draw();window.__ready=true;requestAnimationFrame((n)=>{last=n;tick(n);});
+})();
+</script>
+</body>
+</html>

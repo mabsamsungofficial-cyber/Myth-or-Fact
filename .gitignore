@@ -1,0 +1,21 @@
+# Node dependencies & build
+node_modules/
+dist/
+
+# Logs & temp
+*.log
+.DS_Store
+Thumbs.db
+.env
+.env.local
+
+# Android build outputs & local caches
+.gradle/
+build/
+android/.gradle/
+android/app/build/
+android/build/
+android/captures/
+android/local.properties
+*.apk
+*.aab
